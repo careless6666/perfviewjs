@@ -2,6 +2,9 @@
 // Copyright (c) Microsoft. All rights reserved.
 // </copyright>
 
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Hosting;
+
 namespace PerfViewJS
 {
     using System;
@@ -26,16 +29,26 @@ namespace PerfViewJS
                 return;
             }
 
-            string defaultAuthorizationHeaderForSourceLink = Environment.GetEnvironmentVariable("PerfViewJS_DefaultAuthorizationHeaderForSourceLink");
+            //string defaultAuthorizationHeaderForSourceLink = Environment.GetEnvironmentVariable("PerfViewJS_DefaultAuthorizationHeaderForSourceLink");
 
-            var defaultEventSourceLoggerFactory = new DefaultEventSourceLoggerFactory();
-            var startup = new Startup(Directory.GetCurrentDirectory(), args[1], defaultAuthorizationHeaderForSourceLink);
+            // var defaultEventSourceLoggerFactory = new DefaultEventSourceLoggerFactory();
+            // var startup = new Startup(Directory.GetCurrentDirectory(), args[1], defaultAuthorizationHeaderForSourceLink);
 
-            var server = new KestrelServer(new KestrelServerOptionsConfig(int.Parse(args[0])), new SocketTransportFactory(new SocketTransportOptionsConfig(), defaultEventSourceLoggerFactory), defaultEventSourceLoggerFactory);
+            Startup.dataDirectoryListingRoot = args[1];
+            CreateHostBuilder(args).Build().Run();
 
-            await server.StartAsync(new HttpApplication(startup.HandleRequest), CancellationToken.None);
-
-            Thread.Sleep(Timeout.Infinite);
+            // var server = new KestrelServer(new KestrelServerOptionsConfig(int.Parse(args[0])), new SocketTransportFactory(new SocketTransportOptionsConfig(), defaultEventSourceLoggerFactory), defaultEventSourceLoggerFactory);
+            //
+            // await server.StartAsync(new HttpApplication(startup.HandleRequest), CancellationToken.None);
+            //
+            // Thread.Sleep(Timeout.Infinite);
         }
+
+        private static IHostBuilder CreateHostBuilder(string[] args) =>
+            Host.CreateDefaultBuilder(args)
+                .ConfigureWebHostDefaults(webBuilder =>
+                {
+                    webBuilder.UseStartup<Startup>();
+                });
     }
 }

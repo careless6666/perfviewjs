@@ -216,7 +216,10 @@ namespace PerfViewJS
             }
 
             var log = new StringWriter();
-            using var reader = new SymbolReader(log) { AuthorizationHeaderForSourceLink = authorizationHeader };
+            using var reader = new SymbolReader(log)
+            {
+                AuthorizationHeaderForSourceLink = authorizationHeader
+            };
             var sourceLocation = asTraceEventStackSource.GetSourceLine(maxFrameIdx, reader);
 
             if (sourceLocation == null)

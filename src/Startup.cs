@@ -2,6 +2,10 @@
 // Copyright (c) Microsoft. All rights reserved.
 // </copyright>
 
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+
 namespace PerfViewJS
 {
     using System;
@@ -41,25 +45,34 @@ namespace PerfViewJS
 
         private const string HTMLExtension = ".html";
 
-        private readonly HashSet<string> perfviewJSSupportedFileExtensions = new HashSet<string> { "*.etl", "*.btl", "*.netperf", "*.nettrace" };
+        private readonly HashSet<string> perfviewJSSupportedFileExtensions =
+            new HashSet<string> { "*.etl", "*.btl", "*.netperf", "*.nettrace" };
 
-        private readonly JsonSerializerOptions jsonSerializerSettings = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        private readonly JsonSerializerOptions jsonSerializerSettings = new JsonSerializerOptions
+            { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-        private readonly DeserializedDataCache deserializedDataCache = new DeserializedDataCache(new CallTreeDataCache(new MemoryCacheOptionsConfig()), new CacheExpirationTimeProvider());
+        private readonly DeserializedDataCache deserializedDataCache =
+            new DeserializedDataCache(new CallTreeDataCache(new MemoryCacheOptionsConfig()),
+                new CacheExpirationTimeProvider());
 
         private readonly string contentRoot;
 
         private readonly string indexFile;
 
-        private readonly string dataDirectoryListingRoot;
+        public static string dataDirectoryListingRoot;
 
         private readonly string defaultAuthorizationHeader;
+
+        public Startup()
+        {
+            dataDirectoryListingRoot = "/Users/alexander.usov/Documents/github/perfviewjs";
+        }
 
         public Startup(string contentRootPath, string dataDirectoryListingRoot, string defaultAuthorizationHeader)
         {
             this.contentRoot = Path.Combine(contentRootPath, "spa", "build");
             this.indexFile = Path.GetFullPath(Path.Join(this.contentRoot, "index.html"));
-            this.dataDirectoryListingRoot = Path.GetFullPath(dataDirectoryListingRoot);
+            dataDirectoryListingRoot = Path.GetFullPath(dataDirectoryListingRoot);
             this.defaultAuthorizationHeader = defaultAuthorizationHeader;
         }
 
@@ -86,146 +99,26 @@ namespace PerfViewJS
             var request = context.Request;
             var acceptEncoding = request.Headers[AcceptEncoding].ToString() ?? string.Empty;
 
-            return this.HandleRequestInner(request.Path.Value, request.Query, context.Response, context.RequestAborted, acceptEncoding.Contains(Brotli) ? Compression.Brotli : acceptEncoding.Contains(GZip) ? Compression.GZip : Compression.None);
+            return this.HandleRequestInner(request.Path.Value, request.Query, context.Response, context.RequestAborted,
+                acceptEncoding.Contains(Brotli) ? Compression.Brotli :
+                acceptEncoding.Contains(GZip) ? Compression.GZip : Compression.None);
         }
 
-        internal async Task HandleRequestInner(string requestPath, IQueryCollection queryCollection, HttpResponse response, CancellationToken requestAborted, Compression compression)
+        internal async Task HandleRequestInner(string requestPath, IQueryCollection queryCollection,
+            HttpResponse response, CancellationToken requestAborted, Compression compression)
         {
             if (requestPath.StartsWith("/api"))
             {
                 if (requestPath.StartsWith(@"/api/eventdata"))
                 {
-                    var controller = new EventViewerController(this.deserializedDataCache, new EventViewerModel(this.dataDirectoryListingRoot, queryCollection));
-                    await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.EventsAPI(), compression);
+                    var controller = new EventViewerController(this.deserializedDataCache,
+                        new EventViewerModel(dataDirectoryListingRoot, queryCollection));
+                    await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.EventsAPI(),
+                        compression);
                 }
                 else
                 {
-                    var controller = new StackViewerController(this.deserializedDataCache, new StackViewerModel(this.dataDirectoryListingRoot, queryCollection));
-                    response.ContentType = JsonContentType;
-
-                    if (requestPath.StartsWith(@"/api/callerchildren"))
-                    {
-                        var name = (string)queryCollection["name"] ?? string.Empty;
-                        var path = (string)queryCollection["path"] ?? string.Empty;
-
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.CallerChildrenAPI(name, path), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/treenode"))
-                    {
-                        var name = (string)queryCollection["name"] ?? string.Empty;
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.TreeNodeAPI(name), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/hotspots"))
-                    {
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.HotspotsAPI(), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/eventliston"))
-                    {
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.EventListAPIOrderedByName(), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/eventlistos"))
-                    {
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.EventListAPIOrderedByStackCount(), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/processchooser"))
-                    {
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.ProcessChooserAPI(), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/modulelist"))
-                    {
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.GetModulesAPI(), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/traceinfo"))
-                    {
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.GetTraceInfoAPI(), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/drillinto"))
-                    {
-                        bool exclusive = requestPath.StartsWith(@"/api/drillinto/exclusive");
-
-                        var name = (string)queryCollection["name"] ?? string.Empty;
-                        var path = (string)queryCollection["path"] ?? string.Empty;
-
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.DrillIntoAPI(exclusive, name, path), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/processinfo"))
-                    {
-                        var processIndexString = (string)queryCollection["processIndex"] ?? string.Empty;
-                        var processIndex = -1;
-                        if (!string.IsNullOrEmpty(processIndexString))
-                        {
-                            int.TryParse(processIndexString, out processIndex);
-                        }
-
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.DetailedProcessInfoAPI(processIndex), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/lookupwarmsymbols"))
-                    {
-                        var minCountString = (string)queryCollection["minCount"] ?? string.Empty;
-                        var minCount = 50;
-                        if (!string.IsNullOrEmpty(minCountString))
-                        {
-                            int.TryParse(minCountString, out minCount);
-                        }
-
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.LookupWarmSymbolsAPI(minCount), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/lookupsymbol"))
-                    {
-                        var moduleIndexString = (string)queryCollection["moduleIndex"] ?? string.Empty;
-                        var moduleIndex = -1;
-                        if (!string.IsNullOrEmpty(moduleIndexString))
-                        {
-                            int.TryParse(moduleIndexString, out moduleIndex);
-                        }
-
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.LookupSymbolAPI(moduleIndex), compression);
-                    }
-                    else if (requestPath.StartsWith(@"/api/lookupymbols"))
-                    {
-                        var moduleIndicesString = (string)queryCollection["moduleIndices"] ?? string.Empty;
-                        int[] moduleIndices = null;
-                        if (!string.IsNullOrEmpty(moduleIndicesString))
-                        {
-                            var split = moduleIndicesString.Split(',');
-                            moduleIndices = new int[split.Length];
-                            for (int i = 0; i < split.Length; ++i)
-                            {
-                                moduleIndices[i] = int.Parse(split[i]);
-                            }
-                        }
-
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.LookupSymbolsAPI(moduleIndices), compression);
-                    }
-                    else if (requestPath.StartsWith("/api/datadirectorylisting"))
-                    {
-                        if (string.IsNullOrEmpty(this.dataDirectoryListingRoot))
-                        {
-                            await WriteJsonResponse(response, this.jsonSerializerSettings, new[] { "PerfViewJS_DataRoot not set" }, compression);
-                        }
-                        else
-                        {
-                            var list = new List<string>();
-                            foreach (var item in this.perfviewJSSupportedFileExtensions)
-                            {
-                                var files = Directory.EnumerateFiles(this.dataDirectoryListingRoot, item).OrderByDescending(t => t);
-                                foreach (var file in files)
-                                {
-                                    list.Add(Path.GetFileName(file));
-                                }
-                            }
-
-                            await WriteJsonResponse(response, this.jsonSerializerSettings, list, compression);
-                        }
-                    }
-                    else if (requestPath.StartsWith("/api/getsource"))
-                    {
-                        var name = (string)queryCollection["name"] ?? string.Empty;
-                        var path = (string)queryCollection["path"] ?? string.Empty;
-                        var authorizationHeader = (string)queryCollection["authorizationHeader"] ?? this.defaultAuthorizationHeader;
-
-                        await WriteJsonResponse(response, this.jsonSerializerSettings, await controller.GetSourceAPI(name, path, authorizationHeader), compression);
-                    }
+                    
                 }
             }
             else if (requestPath.StartsWith("/ui"))
@@ -270,7 +163,8 @@ namespace PerfViewJS
             }
         }
 
-        private static async Task SendPotentiallyCompressedFileAsync(HttpResponse response, CancellationToken requestAborted, string file, Compression compression)
+        private static async Task SendPotentiallyCompressedFileAsync(HttpResponse response,
+            CancellationToken requestAborted, string file, Compression compression)
         {
             switch (compression)
             {
@@ -286,13 +180,15 @@ namespace PerfViewJS
             }
         }
 
-        private static async Task SendIndexFile(HttpResponse response, CancellationToken requestAborted, string indexFile, Compression compression)
+        private static async Task SendIndexFile(HttpResponse response, CancellationToken requestAborted,
+            string indexFile, Compression compression)
         {
             response.ContentType = HTMLContentType;
             await SendPotentiallyCompressedFileAsync(response, requestAborted, indexFile, compression);
         }
 
-        private static async Task WriteJsonResponse<T>(HttpResponse response, JsonSerializerOptions settings, T data, Compression compression)
+        private static async Task WriteJsonResponse<T>(HttpResponse response, JsonSerializerOptions settings, T data,
+            Compression compression)
         {
             var jsonUtf8Bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(data, settings));
 
@@ -362,7 +258,8 @@ namespace PerfViewJS
 
                 int bytesRead;
 
-                while ((bytesRead = await fs.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) != 0)
+                while ((bytesRead =
+                           await fs.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) != 0)
                 {
                     int min = (int)Math.Min(remainingBytes, bytesRead);
                     await response.Body.WriteAsync(buffer, 0, min, cancellationToken).ConfigureAwait(false);
@@ -383,7 +280,8 @@ namespace PerfViewJS
             }
         }
 
-        private static async Task SendCompressedOrUncompressedFileAsync(string file, string compressionExtension, HttpResponse response, CancellationToken requestAborted)
+        private static async Task SendCompressedOrUncompressedFileAsync(string file, string compressionExtension,
+            HttpResponse response, CancellationToken requestAborted)
         {
             var compressedFile = file + "." + compressionExtension;
             if (File.Exists(compressedFile))
@@ -401,6 +299,204 @@ namespace PerfViewJS
         private static Task TryCompressFalse()
         {
             throw new Exception("TryCompress returned false.");
+        }
+
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddCors();
+            services.AddControllers();
+        }
+
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        {
+            app.UseRouting();
+
+            app.UseCors(c =>
+            {
+                c.AllowAnyHeader();
+                c.AllowAnyOrigin();
+                c.AllowAnyMethod();
+            });
+
+            app.UseEndpoints(e =>
+            {
+                e.MapControllers();
+                //     e.MapGet("api/traceinfo",
+                //         async context =>
+                //         {
+                //             var controller = new StackViewerController(deserializedDataCache,
+                //                 new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                //
+                //             await WriteJsonResponse(context.Response, jsonSerializerSettings,
+                //                 await controller.GetTraceInfoAPI(), Compression.None);
+                //         });
+
+                e.MapGet("api/eventliston", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+
+                    await WriteJsonResponse(context.Response, this.jsonSerializerSettings,
+                        await controller.EventListAPIOrderedByName(), Compression.None);
+                });
+
+                e.MapGet("api/eventlistos", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    await WriteJsonResponse(context.Response, this.jsonSerializerSettings,
+                        await controller.EventListAPIOrderedByStackCount(), Compression.None);
+                });
+                e.MapGet("api/processchooser", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    await WriteJsonResponse(context.Response, jsonSerializerSettings,
+                        await controller.ProcessChooserAPI(), Compression.None);
+                });
+
+                e.MapGet("api/processinfo", async context =>
+                {
+                    var processIndexString = (string)context.Request.Query["processIndex"] ?? string.Empty;
+                    var processIndex = -1;
+                    if (!string.IsNullOrEmpty(processIndexString))
+                    {
+                        int.TryParse(processIndexString, out processIndex);
+                    }
+                    
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+
+                    await WriteJsonResponse(context.Response, this.jsonSerializerSettings,
+                        await controller.DetailedProcessInfoAPI(processIndex), Compression.None);
+                });
+
+                e.MapGet("api/modulelist", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    await WriteJsonResponse(context.Response, this.jsonSerializerSettings, await controller.GetModulesAPI(),
+                        Compression.None);
+                });
+
+                e.MapGet("api/callerchildren", async context =>
+                    {
+                        var controller = new StackViewerController(deserializedDataCache,
+                            new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                        
+                        var name = (string)context.Request.Query["name"] ?? string.Empty;
+                        var path = (string)context.Request.Query["path"] ?? string.Empty;
+
+                        await WriteJsonResponse(context.Response, jsonSerializerSettings,
+                            await controller.CallerChildrenAPI(name, path), Compression.None);
+                        
+                    });
+
+                e.MapGet("api/treenode", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    var name = (string)context.Request.Query["name"] ?? string.Empty;
+                    await WriteJsonResponse(context.Response, jsonSerializerSettings,
+                        await controller.TreeNodeAPI(name), Compression.None);
+                });
+
+                e.MapGet("api/hotspots", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    await WriteJsonResponse(context.Response, jsonSerializerSettings, await controller.HotspotsAPI(),
+                        Compression.None);
+                });
+
+                e.MapGet("api/drillinto", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    bool exclusive = context.Request.Path.ToString().StartsWith(@"/api/drillinto/exclusive");
+
+                    var name = (string)context.Request.Query["name"] ?? string.Empty;
+                    var path = (string)context.Request.Query["path"] ?? string.Empty;
+
+                    await WriteJsonResponse(context.Response, jsonSerializerSettings,
+                        await controller.DrillIntoAPI(exclusive, name, path), Compression.None);
+                });
+
+                e.MapGet("api/lookupwarmsymbols", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    var minCountString = (string)context.Request.Query["minCount"] ?? string.Empty;
+                    var minCount = 50;
+                    if (!string.IsNullOrEmpty(minCountString))
+                    {
+                        int.TryParse(minCountString, out minCount);
+                    }
+
+                    await WriteJsonResponse(context.Response, jsonSerializerSettings,
+                        await controller.LookupWarmSymbolsAPI(minCount), Compression.None);
+                });
+
+                e.MapGet("api/lookupsymbol", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    var moduleIndexString = (string)context.Request.Query["moduleIndex"] ?? string.Empty;
+                    var moduleIndex = -1;
+                    if (!string.IsNullOrEmpty(moduleIndexString))
+                    {
+                        int.TryParse(moduleIndexString, out moduleIndex);
+                    }
+
+                    var resp = await controller.LookupSymbolAPI(moduleIndex);
+                    
+                    await WriteJsonResponse(context.Response, jsonSerializerSettings,
+                        resp, Compression.None);
+                });
+                
+                e.MapGet("api/lookupymbols", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    var moduleIndicesString = (string)context.Request.Query["moduleIndices"] ?? string.Empty;
+                    int[] moduleIndices = null;
+                    if (!string.IsNullOrEmpty(moduleIndicesString))
+                    {
+                        var split = moduleIndicesString.Split(',');
+                        moduleIndices = new int[split.Length];
+                        for (int i = 0; i < split.Length; ++i)
+                        {
+                            moduleIndices[i] = int.Parse(split[i]);
+                        }
+                    }
+
+                    await WriteJsonResponse(context.Response, jsonSerializerSettings,
+                        await controller.LookupSymbolsAPI(moduleIndices), Compression.None);
+                });
+
+                e.MapGet("api/getsource", async context =>
+                {
+                    var controller = new StackViewerController(deserializedDataCache,
+                        new StackViewerModel(dataDirectoryListingRoot, context.Request.Query));
+                    
+                    var name = (string)context.Request.Query["name"] ?? string.Empty;
+                    var path = (string)context.Request.Query["path"] ?? string.Empty;
+                    var authorizationHeader = (string)context.Request.Query["authorizationHeader"] ??
+                                              this.defaultAuthorizationHeader;
+
+                    await WriteJsonResponse(context.Response, this.jsonSerializerSettings,
+                        await controller.GetSourceAPI(name, path, authorizationHeader), Compression.None);
+                });
+            });
         }
     }
 }

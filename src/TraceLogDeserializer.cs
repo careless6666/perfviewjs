@@ -260,13 +260,14 @@ namespace PerfViewJS
                 return $"ModuleIndex ({moduleIndex}) is larger than possible. It is invalid.";
             }
 
-            var moduleFile = moduleFiles[(ModuleFileIndex)moduleIndex];
+            TraceModuleFile moduleFile = moduleFiles[(ModuleFileIndex)moduleIndex];
             if (moduleFile != null)
             {
                 var writer = new StringWriter();
-                using (var symbolReader = new SymbolReader(writer))
+                using (var symbolReader = new SymbolReader(writer, Startup.dataDirectoryListingRoot))
+                //using (var symbolReader = new SymbolReader(writer))
                 {
-                    this.traceLog.CallStacks.CodeAddresses.LookupSymbolsForModule(symbolReader, moduleFile);
+                    traceLog.CallStacks.CodeAddresses.LookupSymbolsForModule(symbolReader, moduleFile);
                 }
 
                 return writer.ToString();

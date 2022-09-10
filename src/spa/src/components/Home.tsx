@@ -26,7 +26,7 @@ export class Home extends React.Component<Props, State> {
         this.handleEndTimeChange = this.handleEndTimeChange.bind(this);
         this.handleOnClick = this.handleOnClick.bind(this);
 
-        fetch('/api/datadirectorylisting', { method: 'GET', headers: { 'Content-Type': 'application/json' } })
+        fetch('http://localhost:5000'+'/api/datadirectorylisting', { method: 'GET', headers: { 'Content-Type': 'application/json' } })
             .then(res => res.json())
             .then(data => {
                 this.setState({ files: data });
